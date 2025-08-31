@@ -12,45 +12,81 @@
         flex-direction: column;
         align-items: center;
         user-select: none;
-        touch-action: none;
         margin:0;
         padding:0;
+        overflow-x: hidden;
     }
     h1 { margin: 10px; text-align:center; }
     #reset { 
         margin: 10px; 
-        padding: 10px 20px; 
+        padding: 10px; 
         font-family: monospace; 
-        font-size: 14px; 
+        font-size: 12px; 
         cursor: pointer; 
         z-index:1000; 
+        position: relative;
     }
-    #game { display: flex; flex-direction: column; gap: 20px; position: relative; z-index:1; }
-    #top-row { display: flex; gap: 15px; width: 90%; max-width: 900px; }
-    #foundations { display: flex; gap: 15px; margin-left: auto; }
-    #tableau { display: flex; gap: 15px; margin-top: 20px; }
-    .pile { width: 90px; height: 135px; position: relative; }
+    #game { 
+        display: flex; 
+        flex-direction: column; 
+        gap: 20px; 
+        position: relative; 
+        z-index:1; 
+        max-width: 100vw;
+    }
+    #top-row { 
+        display: flex; 
+        gap: 10px; 
+        width: 100%; 
+        justify-content: space-between;
+    }
+    #foundations { 
+        display: flex; 
+        gap: 10px; 
+    }
+    #tableau {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 20px;
+        width: 100%;
+        justify-items: center;
+    }
+    .pile { 
+        width: 80px; 
+        height: 120px; 
+        position: relative; 
+    }
     .pile img { 
-        width: 100%; height: 100%; 
-        position: absolute; top: 0; left: 0; 
-        transition: top 0.25s ease, left 0.25s ease, transform 0.15s ease;
+        width: 100%; 
+        height: 100%; 
+        position: absolute; 
+        top: 0; 
+        left: 0; 
+        transition: top 0.2s, left 0.2s; 
     }
-    .card { cursor: grab; z-index: 1; touch-action: none; }
-    .card.dragging { opacity: 0.8; transform: scale(1.1); z-index: 999; }
-
-    /* --- MOBILE SCALING --- */
-    @media (max-width: 768px) {
-        #reset { font-size: 12px; padding: 8px 16px; }
-        .pile { width: 70px; height: 105px; }
-        #top-row, #tableau { gap: 10px; }
-        .pile img { transition: top 0.2s, left 0.2s, transform 0.15s; }
+    .card { 
+        cursor: grab; 
+        z-index: 1; 
+        touch-action: none; 
     }
 
-    @media (max-width: 480px) {
-        h1 { font-size: 14px; }
-        #reset { font-size: 10px; padding: 6px 12px; }
-        .pile { width: 55px; height: 85px; }
-        #top-row, #tableau { gap: 8px; }
+    /* 📱 Mobile adjustments */
+    @media (max-width: 600px) {
+        h1 { font-size: 12px; }
+        .pile { width: 100px; height: 150px; }
+        #top-row { 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 20px;
+        }
+        #tableau {
+            grid-template-columns: repeat(4, 1fr);
+            gap: 30px 20px; /* extra vertical spacing */
+            justify-items: center;
+        }
+        #tableau .pile:nth-child(n+5) {
+            grid-column: span 1;
+        }
     }
 </style>
 </head>
@@ -135,8 +171,7 @@ function updateUI() {
                 img.dataset.source = 'tableau';
                 img.dataset.tIndex = i;
                 img.dataset.cIndex = index;
-                img.addEventListener('dragstart', dragStart);
-                img.addEventListener('touchstart', touchStart);
+                addDragHandlers(img);
                 pileEl.appendChild(img);
             });
         }
@@ -156,8 +191,7 @@ function updateUI() {
         const wasteCard = document.getElementById('wasteCard');
         wasteCard.dataset.source = 'waste';
         wasteCard.dataset.cIndex = waste.length-1;
-        wasteCard.addEventListener('dragstart', dragStart);
-        wasteCard.addEventListener('touchstart', touchStart);
+        addDragHandlers(wasteCard);
     }
 
     // Foundations
@@ -166,7 +200,6 @@ function updateUI() {
         fEl.innerHTML = foundations[i].length>0 ? `<img src="${foundations[i][foundations[i].length-1].img}">` : `<img src="assets/slot_foundation.png">`;
         fEl.addEventListener('dragover', e=>e.preventDefault());
         fEl.addEventListener('drop', ()=>dropOnFoundation(i));
-        fEl.addEventListener('touchend', ()=>dropOnFoundation(i));
     }
 
     // Tableau drop
@@ -174,86 +207,105 @@ function updateUI() {
         const tEl = document.getElementById('tableau'+i);
         tEl.addEventListener('dragover', e=>e.preventDefault());
         tEl.addEventListener('drop', ()=>dropOnTableau(i));
-        tEl.addEventListener('touchend', ()=>dropOnTableau(i));
     }
 }
 
-// Drag & drop
+// Drag & drop (desktop + mobile)
 let dragged = null;
-let touchData = null;
+let ghost = null;
+
+function addDragHandlers(img){
+    img.addEventListener('dragstart', dragStart);
+    img.addEventListener('touchstart', touchStart, {passive:false});
+}
 
 function dragStart(e){
-    e.target.classList.add("dragging");
-    const source = e.target.dataset.source;
-    if(source==='tableau'){
-        dragged = {
-            source: 'tableau',
-            tIndex: parseInt(e.target.dataset.tIndex),
-            cIndex: parseInt(e.target.dataset.cIndex)
-        };
-    } else if(source==='waste'){
-        dragged = {
-            source: 'waste',
-            cIndex: parseInt(e.target.dataset.cIndex)
-        };
-    }
-    e.dataTransfer.setData("text/plain","dummy");
+    setDragged(e.target);
+    // Prevent default browser ghost
+    e.dataTransfer.setDragImage(new Image(), 0, 0);
 }
+
 function touchStart(e){
-    const target = e.target;
-    target.classList.add("dragging");
-    const source = target.dataset.source;
+    e.preventDefault();
+    setDragged(e.target);
+    // Create our custom ghost only for touch
+    ghost = e.target.cloneNode(true);
+    ghost.style.opacity = "0.7";
+    ghost.style.position = "fixed";
+    ghost.style.pointerEvents = "none";
+    ghost.style.zIndex = "9999";
+    document.body.appendChild(ghost);
+
+    document.addEventListener('touchmove', touchMove, {passive:false});
+    document.addEventListener('touchend', touchEnd);
+}
+
+function setDragged(el){
+    const source = el.dataset.source;
     if(source==='tableau'){
-        touchData = {
-            source:'tableau',
-            tIndex: parseInt(target.dataset.tIndex),
-            cIndex: parseInt(target.dataset.cIndex)
-        };
+        dragged = {source:'tableau', tIndex: parseInt(el.dataset.tIndex), cIndex: parseInt(el.dataset.cIndex)};
     } else if(source==='waste'){
-        touchData = {
-            source:'waste',
-            cIndex: parseInt(target.dataset.cIndex)
-        };
+        dragged = {source:'waste', cIndex: parseInt(el.dataset.cIndex)};
     }
 }
 
-function clearDragEffects(){
-    document.querySelectorAll(".dragging").forEach(el=>el.classList.remove("dragging"));
+function touchMove(e){
+    if(ghost){
+        const touch = e.touches[0];
+        ghost.style.left = (touch.clientX-40)+"px";
+        ghost.style.top = (touch.clientY-60)+"px";
+    }
+}
+
+function touchEnd(e){
+    if(ghost){
+        ghost.remove();
+        ghost=null;
+    }
+    const touch = e.changedTouches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+    if(!target){ dragged=null; return; }
+    if(target.closest('#foundations .pile')){
+        const id = target.closest('.pile').id.replace("foundation","");
+        dropOnFoundation(parseInt(id));
+    } else if(target.closest('#tableau .pile')){
+        const id = target.closest('.pile').id.replace("tableau","");
+        dropOnTableau(parseInt(id));
+    }
     dragged=null;
-    touchData=null;
+    document.removeEventListener('touchmove', touchMove);
+    document.removeEventListener('touchend', touchEnd);
 }
 
 function dropOnFoundation(fIndex){
-    const data = dragged || touchData;
-    if(!data) return;
+    if(!dragged) return;
     let card;
-    if(data.source==='tableau'){
-        card = tableau[data.tIndex][data.cIndex];
-    } else if(data.source==='waste'){
-        card = waste[data.cIndex];
+    if(dragged.source==='tableau'){
+        card = tableau[dragged.tIndex][dragged.cIndex];
+    } else if(dragged.source==='waste'){
+        card = waste[dragged.cIndex];
     }
     const top = foundations[fIndex][foundations[fIndex].length-1];
     if((!top && card.rank==='01') || (top && top.suit===card.suit && parseInt(card.rank)===parseInt(top.rank)+1)){
         foundations[fIndex].push(card);
-        if(data.source==='tableau'){
-            tableau[data.tIndex].splice(data.cIndex);
-            if(tableau[data.tIndex].length>0) tableau[data.tIndex][tableau[data.tIndex].length-1].faceUp = true;
-        } else if(data.source==='waste'){
-            waste.splice(data.cIndex,1);
+        if(dragged.source==='tableau'){
+            tableau[dragged.tIndex].splice(dragged.cIndex);
+            if(tableau[dragged.tIndex].length>0) tableau[dragged.tIndex][tableau[dragged.tIndex].length-1].faceUp = true;
+        } else if(dragged.source==='waste'){
+            waste.splice(dragged.cIndex,1);
         }
         updateUI();
     }
-    clearDragEffects();
+    dragged=null;
 }
 
 function dropOnTableau(tIndex){
-    const data = dragged || touchData;
-    if(!data) return;
+    if(!dragged) return;
     let movingCards;
-    if(data.source==='tableau'){
-        movingCards = tableau[data.tIndex].slice(data.cIndex);
-    } else if(data.source==='waste'){
-        movingCards = [waste[data.cIndex]];
+    if(dragged.source==='tableau'){
+        movingCards = tableau[dragged.tIndex].slice(dragged.cIndex);
+    } else if(dragged.source==='waste'){
+        movingCards = [waste[dragged.cIndex]];
     }
 
     const destPile = tableau[tIndex];
@@ -262,15 +314,15 @@ function dropOnTableau(tIndex){
     const isRed = c => c.suit==='cuori' || c.suit==='quadri';
     if((!topCard && movingCard.rank==='13') || (topCard && parseInt(topCard.rank)===parseInt(movingCard.rank)+1 && isRed(topCard)!==isRed(movingCard))){
         destPile.push(...movingCards);
-        if(data.source==='tableau'){
-            tableau[data.tIndex].splice(data.cIndex);
-            if(tableau[data.tIndex].length>0) tableau[data.tIndex][tableau[data.tIndex].length-1].faceUp = true;
-        } else if(data.source==='waste'){
-            waste.splice(data.cIndex,1);
+        if(dragged.source==='tableau'){
+            tableau[dragged.tIndex].splice(dragged.cIndex);
+            if(tableau[dragged.tIndex].length>0) tableau[dragged.tIndex][tableau[dragged.tIndex].length-1].faceUp = true;
+        } else if(dragged.source==='waste'){
+            waste.splice(dragged.cIndex,1);
         }
         updateUI();
     }
-    clearDragEffects();
+    dragged=null;
 }
 
 // Stock click
@@ -299,6 +351,6 @@ deal();
 </body>
 </html>
 
-</body>
 </html>
+
 
