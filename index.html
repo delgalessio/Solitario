@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Retro Solitaire</title>
+<style>
+    body {
+        background: #2b2b2b;
+        font-family: "Press Start 2P", monospace;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        user-select: none;
+        touch-action: none;
+        margin:0;
+        padding:0;
+    }
+    h1 { margin: 10px; text-align:center; }
+    #reset { margin: 10px; padding: 10px; font-family: monospace; font-size: 12px; cursor: pointer; z-index:1000; }
+    #game { display: flex; flex-direction: column; gap: 20px; position: relative; z-index:1; }
+    #top-row { display: flex; gap: 10px; width: 700px; }
+    #foundations { display: flex; gap: 10px; margin-left: auto; }
+    #tableau { display: flex; gap: 10px; margin-top: 20px; }
+    .pile { width: 80px; height: 120px; position: relative; }
+    .pile img { width: 100%; height: 100%; position: absolute; top: 0; left: 0; transition: top 0.2s, left 0.2s; }
+    .card { cursor: grab; z-index: 1; touch-action: none; }
+</style>
+</head>
+<body>
+
+<h1>Retro Solitaire</h1>
+<button id="reset">RESET</button>
+<div id="game">
+    <div id="top-row">
+        <div class="pile" id="stock"><img src="assets/back_blue.png"></div>
+        <div class="pile" id="waste"><img src="assets/slot_waste.png"></div>
+        <div id="foundations">
+            <div class="pile" id="foundation0"><img src="assets/slot_foundation.png"></div>
+            <div class="pile" id="foundation1"><img src="assets/slot_foundation.png"></div>
+            <div class="pile" id="foundation2"><img src="assets/slot_foundation.png"></div>
+            <div class="pile" id="foundation3"><img src="assets/slot_foundation.png"></div>
+        </div>
+    </div>
+    <div id="tableau">
+        <div class="pile" id="tableau0"><img src="assets/slot.png"></div>
+        <div class="pile" id="tableau1"><img src="assets/slot.png"></div>
+        <div class="pile" id="tableau2"><img src="assets/slot.png"></div>
+        <div class="pile" id="tableau3"><img src="assets/slot.png"></div>
+        <div class="pile" id="tableau4"><img src="assets/slot.png"></div>
+        <div class="pile" id="tableau5"><img src="assets/slot.png"></div>
+        <div class="pile" id="tableau6"><img src="assets/slot.png"></div>
+    </div>
+</div>
+
+<script>
+const suits = ["cuori","picche","fiori","quadri"];
+const ranks = Array.from({length:13}, (_,i)=>String(i+1).padStart(2,'0'));
+let deck = [];
+
+function createDeck() {
+    deck = [];
+    for (let suit of suits) {
+        for (let rank of ranks) {
+            deck.push({rank, suit, img: `assets/${rank}${suit}.png`});
+        }
+    }
+    shuffle(deck);
+}
+
+function shuffle(array) {
+    for (let i = array.length-1; i>0; i--) {
+        const j = Math.floor(Math.random()*(i+1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+}
+
+let stock=[], waste=[], foundations=[[],[],[],[]], tableau=[[],[],[],[],[],[],[]];
+
+function deal() {
+    tableau = [[],[],[],[],[],[],[]];
+    foundations = [[],[],[],[]];
+    waste = [];
+    stock = [...deck];
+    for (let i=0;i<7;i++) {
+        for (let j=0;j<=i;j++) {
+            let card = stock.pop();
+            tableau[i].push({...card, faceUp: j===i});
+        }
+    }
+    updateUI();
+}
+
+function updateUI() {
+    // Tableau
+    for (let i=0;i<7;i++) {
+        const pileEl = document.getElementById('tableau'+i);
+        pileEl.innerHTML = '';
+        if(tableau[i].length===0){
+            pileEl.innerHTML = `<img src="assets/slot.png">`;
+        } else {
+            tableau[i].forEach((c,index)=>{
+                const img = document.createElement('img');
+                img.src = c.faceUp ? c.img : 'assets/back_blue.png';
+                img.classList.add('card');
+                img.style.top = (index*20)+'px';
+                img.draggable = c.faceUp;
+                img.dataset.source = 'tableau';
+                img.dataset.tIndex = i;
+                img.dataset.cIndex = index;
+                img.addEventListener('dragstart', dragStart);
+                img.addEventListener('touchstart', touchStart);
+                pileEl.appendChild(img);
+            });
+        }
+    }
+
+    // Stock
+    const stockEl = document.getElementById('stock');
+    stockEl.innerHTML = `<img src="${stock.length>0?'assets/back_blue.png':'assets/slot.png'}">`;
+
+    // Waste
+    const wasteEl = document.getElementById('waste');
+    wasteEl.innerHTML = waste.length>0 
+        ? `<img src="${waste[waste.length-1].img}" draggable="true" id="wasteCard">` 
+        : `<img src="assets/slot_waste.png">`;
+
+    if(waste.length>0){
+        const wasteCard = document.getElementById('wasteCard');
+        wasteCard.dataset.source = 'waste';
+        wasteCard.dataset.cIndex = waste.length-1;
+        wasteCard.addEventListener('dragstart', dragStart);
+        wasteCard.addEventListener('touchstart', touchStart);
+    }
+
+    // Foundations
+    for(let i=0;i<4;i++){
+        const fEl = document.getElementById('foundation'+i);
+        fEl.innerHTML = foundations[i].length>0 ? `<img src="${foundations[i][foundations[i].length-1].img}">` : `<img src="assets/slot_foundation.png">`;
+        fEl.addEventListener('dragover', e=>e.preventDefault());
+        fEl.addEventListener('drop', ()=>dropOnFoundation(i));
+        fEl.addEventListener('touchend', ()=>dropOnFoundation(i));
+    }
+
+    // Tableau drop
+    for(let i=0;i<7;i++){
+        const tEl = document.getElementById('tableau'+i);
+        tEl.addEventListener('dragover', e=>e.preventDefault());
+        tEl.addEventListener('drop', ()=>dropOnTableau(i));
+        tEl.addEventListener('touchend', ()=>dropOnTableau(i));
+    }
+}
+
+// Drag & drop
+let dragged = null;
+let touchData = null;
+
+function dragStart(e){
+    const source = e.target.dataset.source;
+    if(source==='tableau'){
+        dragged = {
+            source: 'tableau',
+            tIndex: parseInt(e.target.dataset.tIndex),
+            cIndex: parseInt(e.target.dataset.cIndex)
+        };
+    } else if(source==='waste'){
+        dragged = {
+            source: 'waste',
+            cIndex: parseInt(e.target.dataset.cIndex)
+        };
+    }
+}
+
+function touchStart(e){
+    const touch = e.touches[0];
+    const target = e.target;
+    const source = target.dataset.source;
+    if(source==='tableau'){
+        touchData = {
+            source:'tableau',
+            tIndex: parseInt(target.dataset.tIndex),
+            cIndex: parseInt(target.dataset.cIndex)
+        };
+    } else if(source==='waste'){
+        touchData = {
+            source:'waste',
+            cIndex: parseInt(target.dataset.cIndex)
+        };
+    }
+}
+
+function dropOnFoundation(fIndex){
+    const data = dragged || touchData;
+    if(!data) return;
+    let card;
+    if(data.source==='tableau'){
+        card = tableau[data.tIndex][data.cIndex];
+    } else if(data.source==='waste'){
+        card = waste[data.cIndex];
+    }
+    const top = foundations[fIndex][foundations[fIndex].length-1];
+    if((!top && card.rank==='01') || (top && top.suit===card.suit && parseInt(card.rank)===parseInt(top.rank)+1)){
+        foundations[fIndex].push(card);
+        if(data.source==='tableau'){
+            tableau[data.tIndex].splice(data.cIndex);
+            if(tableau[data.tIndex].length>0) tableau[data.tIndex][tableau[data.tIndex].length-1].faceUp = true;
+        } else if(data.source==='waste'){
+            waste.splice(data.cIndex,1);
+        }
+        updateUI();
+    }
+    dragged=null;
+    touchData=null;
+}
+
+function dropOnTableau(tIndex){
+    const data = dragged || touchData;
+    if(!data) return;
+    let movingCards;
+    if(data.source==='tableau'){
+        movingCards = tableau[data.tIndex].slice(data.cIndex);
+    } else if(data.source==='waste'){
+        movingCards = [waste[data.cIndex]];
+    }
+
+    const destPile = tableau[tIndex];
+    const topCard = destPile[destPile.length-1];
+    const movingCard = movingCards[0];
+    const isRed = c => c.suit==='cuori' || c.suit==='quadri';
+    if((!topCard && movingCard.rank==='13') || (topCard && parseInt(topCard.rank)===parseInt(movingCard.rank)+1 && isRed(topCard)!==isRed(movingCard))){
+        destPile.push(...movingCards);
+        if(data.source==='tableau'){
+            tableau[data.tIndex].splice(data.cIndex);
+            if(tableau[data.tIndex].length>0) tableau[data.tIndex][tableau[data.tIndex].length-1].faceUp = true;
+        } else if(data.source==='waste'){
+            waste.splice(data.cIndex,1);
+        }
+        updateUI();
+    }
+    dragged=null;
+    touchData=null;
+}
+
+// Stock click
+document.getElementById('stock').addEventListener('click', ()=>{
+    if(stock.length>0) {
+        const card = stock.pop();
+        card.faceUp = true;
+        waste.push(card);
+    } else {
+        stock = waste.splice(0).reverse();
+        stock.forEach(c=>c.faceUp=false);
+    }
+    updateUI();
+});
+
+// Reset
+document.getElementById('reset').addEventListener('click', ()=>{
+    createDeck();
+    deal();
+});
+
+createDeck();
+deal();
+</script>
+
+</body>
+</html>
