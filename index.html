@@ -17,14 +17,41 @@
         padding:0;
     }
     h1 { margin: 10px; text-align:center; }
-    #reset { margin: 10px; padding: 10px; font-family: monospace; font-size: 12px; cursor: pointer; z-index:1000; }
+    #reset { 
+        margin: 10px; 
+        padding: 10px 20px; 
+        font-family: monospace; 
+        font-size: 14px; 
+        cursor: pointer; 
+        z-index:1000; 
+    }
     #game { display: flex; flex-direction: column; gap: 20px; position: relative; z-index:1; }
-    #top-row { display: flex; gap: 10px; width: 700px; }
-    #foundations { display: flex; gap: 10px; margin-left: auto; }
-    #tableau { display: flex; gap: 10px; margin-top: 20px; }
-    .pile { width: 80px; height: 120px; position: relative; }
-    .pile img { width: 100%; height: 100%; position: absolute; top: 0; left: 0; transition: top 0.2s, left 0.2s; }
+    #top-row { display: flex; gap: 15px; width: 90%; max-width: 900px; }
+    #foundations { display: flex; gap: 15px; margin-left: auto; }
+    #tableau { display: flex; gap: 15px; margin-top: 20px; }
+    .pile { width: 90px; height: 135px; position: relative; }
+    .pile img { 
+        width: 100%; height: 100%; 
+        position: absolute; top: 0; left: 0; 
+        transition: top 0.25s ease, left 0.25s ease, transform 0.15s ease;
+    }
     .card { cursor: grab; z-index: 1; touch-action: none; }
+    .card.dragging { opacity: 0.8; transform: scale(1.1); z-index: 999; }
+
+    /* --- MOBILE SCALING --- */
+    @media (max-width: 768px) {
+        #reset { font-size: 12px; padding: 8px 16px; }
+        .pile { width: 70px; height: 105px; }
+        #top-row, #tableau { gap: 10px; }
+        .pile img { transition: top 0.2s, left 0.2s, transform 0.15s; }
+    }
+
+    @media (max-width: 480px) {
+        h1 { font-size: 14px; }
+        #reset { font-size: 10px; padding: 6px 12px; }
+        .pile { width: 55px; height: 85px; }
+        #top-row, #tableau { gap: 8px; }
+    }
 </style>
 </head>
 <body>
@@ -122,7 +149,7 @@ function updateUI() {
     // Waste
     const wasteEl = document.getElementById('waste');
     wasteEl.innerHTML = waste.length>0 
-        ? `<img src="${waste[waste.length-1].img}" draggable="true" id="wasteCard">` 
+        ? `<img src="${waste[waste.length-1].img}" draggable="true" id="wasteCard" class="card">` 
         : `<img src="assets/slot_waste.png">`;
 
     if(waste.length>0){
@@ -156,6 +183,7 @@ let dragged = null;
 let touchData = null;
 
 function dragStart(e){
+    e.target.classList.add("dragging");
     const source = e.target.dataset.source;
     if(source==='tableau'){
         dragged = {
@@ -169,11 +197,11 @@ function dragStart(e){
             cIndex: parseInt(e.target.dataset.cIndex)
         };
     }
+    e.dataTransfer.setData("text/plain","dummy");
 }
-
 function touchStart(e){
-    const touch = e.touches[0];
     const target = e.target;
+    target.classList.add("dragging");
     const source = target.dataset.source;
     if(source==='tableau'){
         touchData = {
@@ -187,6 +215,12 @@ function touchStart(e){
             cIndex: parseInt(target.dataset.cIndex)
         };
     }
+}
+
+function clearDragEffects(){
+    document.querySelectorAll(".dragging").forEach(el=>el.classList.remove("dragging"));
+    dragged=null;
+    touchData=null;
 }
 
 function dropOnFoundation(fIndex){
@@ -209,8 +243,7 @@ function dropOnFoundation(fIndex){
         }
         updateUI();
     }
-    dragged=null;
-    touchData=null;
+    clearDragEffects();
 }
 
 function dropOnTableau(tIndex){
@@ -237,8 +270,7 @@ function dropOnTableau(tIndex){
         }
         updateUI();
     }
-    dragged=null;
-    touchData=null;
+    clearDragEffects();
 }
 
 // Stock click
@@ -266,3 +298,7 @@ deal();
 
 </body>
 </html>
+
+</body>
+</html>
+
